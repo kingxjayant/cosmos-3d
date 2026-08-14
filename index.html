@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>COSMOS — A Journey Through Space</title>
+<meta name="description" content="An immersive scroll-driven 3D journey through space. Built for the 3D Websites Hackathon." />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <canvas id="bg"></canvas>
+
+  <!-- Loading screen -->
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="loader-ring"></div>
+      <div class="loader-text">ENTERING COSMOS</div>
+    </div>
+  </div>
+
+  <!-- Scroll progress bar -->
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+
+  <!-- Sound toggle -->
+  <button id="sound-toggle" aria-label="Toggle ambient sound">🔇</button>
+
+  <!-- Scrollable content sections (drive the camera) -->
+  <main id="scroll-content">
+
+    <section class="panel" id="panel-0">
+      <div class="panel-inner">
+        <h1 class="glow-title">COSMOS</h1>
+        <p class="subtitle">a journey through the space between stars</p>
+        <div class="scroll-hint">
+          <span>scroll to begin</span>
+          <div class="mouse"><div class="wheel"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel align-right" id="panel-1">
+      <div class="panel-inner">
+        <span class="tag">01 — DEPARTURE</span>
+        <h2>Leaving Earth's Orbit</h2>
+        <p>Every journey begins with a single point of light. We drift past the blue marble, out into the dark, where silence has a texture of its own.</p>
+      </div>
+    </section>
+
+    <section class="panel align-left" id="panel-2">
+      <div class="panel-inner">
+        <span class="tag">02 — THE RED WORLD</span>
+        <h2>Wandering Past Mars</h2>
+        <p>Dust storms the size of continents rage below. From here, it's just a rust-colored ember, spinning quietly in the void.</p>
+      </div>
+    </section>
+
+    <section class="panel align-right" id="panel-3">
+      <div class="panel-inner">
+        <span class="tag">03 — THE GIANT</span>
+        <h2>Into the Asteroid Belt</h2>
+        <p>Rock and ice tumble in slow motion around us. Somewhere ahead, a gas giant waits, wrapped in bands of amber light.</p>
+      </div>
+    </section>
+
+    <section class="panel align-left" id="panel-4">
+      <div class="panel-inner">
+        <span class="tag">04 — DEEP FIELD</span>
+        <h2>The Nebula Awakens</h2>
+        <p>Light bends. Color blooms where there should be nothing. This is where stars are born — and where some go to die.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-5">
+      <div class="panel-inner">
+        <span class="tag">05 — THE THRESHOLD</span>
+        <h2 class="glow-title small">Beyond the Horizon</h2>
+        <p>A final light awaits — bright, patient, and infinite. Step through.</p>
+        <a class="cta" href="https://github.com/kingxjayant/cosmos-3d" target="_blank" rel="noopener">View Source ↗</a>
+      </div>
+    </section>
+
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

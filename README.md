@@ -1,0 +1,62 @@
+# 🌌 COSMOS — A Journey Through Space
+
+**An immersive, scroll-driven 3D website that takes you on a cinematic flight through space — past Earth, Mars, a ringed gas giant, a glowing nebula, and finally through a portal of light.**
+
+Built for the [3D Websites Hackathon](https://3d-websites-hackathon.devpost.com/).
+
+🔗 **Live demo:** _add your Render/Netlify/Vercel URL here after deploying_
+📦 **Source:** https://github.com/kingxjayant/cosmos-3d
+
+---
+
+## What it is
+
+There's no problem being solved here — this hackathon is about creating *wonder*, not utility. COSMOS is a single-page 3D experience: as you scroll, a virtual camera flies along a hand-authored path through a procedurally generated universe. Each scroll "chapter" reveals a new part of the journey — departure from Earth, a pass by Mars, an asteroid belt leading to a gas giant, a colorful particle nebula, and a final glowing portal.
+
+## How it works
+
+- **Three.js** renders the whole scene: a multi-layered starfield (three point-cloud shells at different radii/sizes/colors for depth), several textured/lit planet meshes (Earth, Mars, a ringed gas giant, a small moon), a 3,200-particle nebula cloud with per-particle color variation, and a glowing torus "portal" at the very end.
+- **Scroll = camera position.** Scroll progress (0 → 1) is smoothed and fed into two `CatmullRomCurve3` splines — one for camera position, one for the look-at target — built from a small set of hand-placed keyframes. This turns scrolling into a smooth, cinematic flight path instead of a jump-cut between fixed camera positions.
+- **Mouse/touch parallax** subtly offsets the camera based on cursor position, so the scene feels alive even when you're not scrolling.
+- **UnrealBloomPass** post-processing (via `EffectComposer`) gives the glowing, sci-fi look to the stars, planet rims, and portal.
+- Section text panels fade/slide in via `IntersectionObserver` as they scroll into view.
+- An optional ambient drone (built from a few `OscillatorNode`s — no external audio files needed) can be toggled on with the speaker button, bottom-right.
+- Everything is vanilla HTML/CSS/JS + Three.js loaded via an import map from a CDN — **no build step, no bundler, no npm install needed.** Just open `index.html` (or serve the folder) and it works.
+
+## Tech used
+
+- [Three.js](https://threejs.org/) (r160) — scene, camera, lighting, geometry, particles
+- Three.js `addons`: `EffectComposer`, `RenderPass`, `UnrealBloomPass`, `OutputPass` for bloom post-processing
+- Vanilla JavaScript (ES modules, no framework, no build tool)
+- Web Audio API for the optional ambient soundscape
+- CSS (`Space Grotesk` / `Sora` from Google Fonts) for the overlaid text panels and UI chrome
+
+## Running it locally
+
+No install needed — it's fully static.
+
+```bash
+cd cosmos-3d
+python3 -m http.server 8000
+# then open http://localhost:8000 in a browser
+```
+
+(Any static file server works — `npx serve`, VS Code's Live Server, etc. It must be served over HTTP/HTTPS rather than opened as a `file://` URL, since ES module imports require a real origin.)
+
+## Project structure
+
+```
+cosmos-3d/
+├── index.html          # Page structure: canvas + scroll-driven text sections
+├── css/
+│   └── style.css        # All visual styling, fonts, panel layout/animations
+└── js/
+    └── main.js           # All Three.js scene setup, camera path, bloom, audio, interaction
+```
+
+## What I'd build next
+
+- Real planet textures (procedural noise or actual NASA imagery) instead of flat colors
+- A mini "warp speed" star-streak transition between each chapter
+- More camera keyframes for a longer, more detailed journey
+- A lightweight loading progress bar tied to actual asset loading rather than a fixed timeout
