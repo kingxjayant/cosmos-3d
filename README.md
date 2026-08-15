@@ -11,7 +11,9 @@ Built for the [3D Websites Hackathon](https://3d-websites-hackathon.devpost.com/
 
 ## What it is
 
-There's no problem being solved here — this hackathon is about creating *wonder*, not utility. COSMOS is a single-page 3D experience: as you scroll, a virtual camera flies along a hand-authored path through a procedurally generated universe. Each scroll "chapter" reveals a new part of the journey — departure from Earth, a pass by Mars, an asteroid belt leading to a gas giant, a colorful particle nebula, a black hole bending light around it, and a final glowing portal.
+There's no problem being solved here — this hackathon is about creating *wonder*, not utility. COSMOS is a single-page 3D experience: as you scroll, a virtual camera flies along a hand-authored path through a procedurally generated universe. Each scroll "chapter" reveals a new part of the journey — departure from Earth, a pass by Mars, an asteroid belt leading to a gas giant, a colorful particle nebula, a black hole bending light around it, and a final glowing portal you can press-and-hold to warp through, ending in a confetti celebration.
+
+The finale interaction (hold-to-charge → warp flythrough → confetti burst) is directly inspired by [Jam3's "FWA 100"](https://fwa100.jam3.com/) case study — an award-winning WebGL experience Jam3 built to celebrate their 100th FWA win, which used a similar hold-to-charge → vortex flythrough → confetti-burst structure. COSMOS reinterprets that idea for a "flying to the edge of the universe" narrative.
 
 ## How it works
 
@@ -20,6 +22,7 @@ There's no problem being solved here — this hackathon is about creating *wonde
 - **Click-to-explore interactivity.** Planets (and the black hole) are raycast-tested against the mouse every frame; hovering morphs a custom glowing cursor, and clicking opens an info card with a short fact about that body — real interaction, not just passive scrolling.
 - **Gravitational lensing.** Near the black-hole chapter, a custom `ShaderPass` warps the screen-space image around the event horizon's projected screen position, growing and shrinking smoothly as you scroll toward and away from it.
 - **Randomly spawned comets** streak across the sky on a timer, each with a fading line-trail.
+- **Hold-to-charge finale.** At the very end, a circular "HOLD" button (SVG ring that fills as you press) takes over the camera once fully charged: the camera flies straight at the portal while the field of view stretches (60° → 115°) and hundreds of radial streak-particles rush past for a warp-speed feel, finishing in a physics-driven confetti burst (140 instanced tetrahedra with per-particle gravity/rotation/fade) and a "You Made It" overlay with a "Fly Again" reset button.
 - **Mouse/touch parallax** subtly offsets the camera based on cursor position, so the scene feels alive even when you're not scrolling.
 - **UnrealBloomPass** post-processing (via `EffectComposer`) gives the glowing, sci-fi look to the stars, planet rims, and portal.
 - Section text panels fade/slide in via `IntersectionObserver` as they scroll into view; panels use `pointer-events: none` (with `auto` re-enabled only on real links/buttons) so clicks pass through to the 3D scene underneath.

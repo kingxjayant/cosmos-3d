@@ -251,7 +251,123 @@ p {
   opacity: 0.75;
 }
 
+/* ---------- Warp hold-to-charge button (Jam3 FWA100-inspired) ---------- */
+#warp-hold-btn {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: 30px auto 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(125, 216, 255, 0.05);
+  border: 1px solid rgba(125, 216, 255, 0.25);
+  border-radius: 50%;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+#warp-hold-btn:hover {
+  background: rgba(125, 216, 255, 0.1);
+  box-shadow: 0 0 40px rgba(125, 216, 255, 0.25);
+}
+#warp-hold-btn.charging {
+  transform: scale(1.05);
+}
+#warp-hold-btn.launched {
+  opacity: 0;
+  transform: scale(1.6);
+  pointer-events: none;
+  transition: opacity 0.6s ease, transform 0.8s ease;
+}
+.warp-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.warp-ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 3;
+}
+.warp-ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 327;
+  stroke-dashoffset: 327;
+  filter: drop-shadow(0 0 6px rgba(125, 216, 255, 0.8));
+  transition: stroke-dashoffset 0.05s linear;
+}
+.warp-btn-label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  color: var(--text);
+  opacity: 0.85;
+}
+#warp-hold-btn.charging .warp-btn-label { opacity: 1; }
+
+/* ---------- Finale overlay (revealed after warp completes) ---------- */
+#finale-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(15, 22, 42, 0.75), rgba(2, 3, 8, 0.96));
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.2s ease, visibility 1.2s ease;
+}
+#finale-overlay.show {
+  opacity: 1;
+  visibility: visible;
+}
+#finale-overlay-inner {
+  text-align: center;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 1s ease 0.4s, transform 1s ease 0.4s;
+}
+#finale-overlay.show #finale-overlay-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+#finale-overlay p {
+  margin-bottom: 30px;
+}
+#replay-btn {
+  padding: 14px 30px;
+  border: 1px solid rgba(125, 216, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(125, 216, 255, 0.08);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+#replay-btn:hover {
+  background: rgba(125, 216, 255, 0.2);
+  box-shadow: 0 0 30px rgba(125, 216, 255, 0.4);
+}
+
 /* ---------- Custom glowing cursor ---------- */
+body.warping #progress-bar,
+body.warping #sound-toggle,
+body.warping #custom-cursor {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
 #custom-cursor {
   position: fixed;
   top: 0; left: 0;

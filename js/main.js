@@ -511,6 +511,168 @@ soundBtn.addEventListener('click', () => {
   soundBtn.textContent = soundOn ? '🔊' : '🔇';
 });
 
+/* ============================================================
+   FINALE SEQUENCE — hold-to-charge, warp flythrough, confetti burst
+   Inspired by Jam3's "FWA 100" (fwa100.jam3.com): a hold-to-charge
+   interaction that releases into a camera flight down a vortex with
+   FOV elongation for a "warp speed" feel, ending in a confetti burst.
+   ============================================================ */
+
+const warpBtn = document.getElementById('warp-hold-btn');
+const warpRingFill = document.getElementById('warp-ring-fill');
+const finaleOverlay = document.getElementById('finale-overlay');
+const finalePanelInner = document.getElementById('finale-panel-inner');
+const replayBtn = document.getElementById('replay-btn');
+const RING_CIRCUMFERENCE = 2 * Math.PI * 52; // matches the SVG circle r=52
+
+const warpState = { phase: 'idle', chargeStart: 0, warpStart: 0 }; // idle -> charging -> warping -> done
+const CHARGE_DURATION = 1.3; // seconds to hold before launch
+const WARP_DURATION = 2.6; // seconds for the flythrough itself
+
+/* ---------------- Warp streak particles (radial speed-lines) ---------------- */
+const warpStreakCount = 400;
+const warpStreakGeo = new THREE.BufferGeometry();
+const warpStreakPositions = new Float32Array(warpStreakCount * 3);
+const warpStreakSeeds = new Float32Array(warpStreakCount);
+for (let i = 0; i < warpStreakCount; i++) {
+  const angle = Math.random() * Math.PI * 2;
+  const r = 20 + Math.random() * 220;
+  warpStreakPositions[i * 3] = Math.cos(angle) * r;
+  warpStreakPositions[i * 3 + 1] = Math.sin(angle) * r;
+  warpStreakPositions[i * 3 + 2] = -Math.random() * 1200;
+  warpStreakSeeds[i] = Math.random();
+}
+warpStreakGeo.setAttribute('position', new THREE.BufferAttribute(warpStreakPositions, 3));
+warpStreakGeo.setAttribute('aSeed', new THREE.BufferAttribute(warpStreakSeeds, 1));
+const warpStreakMat = new THREE.ShaderMaterial({
+  uniforms: { uOpacity: { value: 0 } },
+  vertexShader: `
+    attribute float aSeed;
+    varying float vSeed;
+    void main() {
+      vSeed = aSeed;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = 3.0 * (600.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: `
+    uniform float uOpacity;
+    varying float vSeed;
+    void main() {
+      vec2 c = gl_PointCoord - 0.5;
+      float d = 1.0 - smoothstep(0.0, 0.5, length(c));
+      gl_FragColor = vec4(0.8, 0.92, 1.0, d * uOpacity);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const warpStreaks = new THREE.Points(warpStreakGeo, warpStreakMat);
+warpStreaks.visible = false;
+scene.add(warpStreaks);
+
+/* ---------------- Confetti burst (instanced tetrahedra) ---------------- */
+const CONFETTI_COUNT = 140;
+const confettiColors = [0x7dd8ff, 0xb98bff, 0xff9ecf, 0xffe066, 0xffffff];
+const confettiGeo = new THREE.TetrahedronGeometry(2.2);
+const confettiMat = new THREE.MeshBasicMaterial({ vertexColors: false });
+const confettiMesh = new THREE.InstancedMesh(confettiGeo, confettiMat, CONFETTI_COUNT);
+confettiMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CONFETTI_COUNT * 3), 3);
+confettiMesh.visible = false;
+scene.add(confettiMesh);
+
+const confettiState = [];
+const confettiDummy = new THREE.Object3D();
+
+function resetConfetti(origin) {
+  confettiState.length = 0;
+  for (let i = 0; i < CONFETTI_COUNT; i++) {
+    const dir = new THREE.Vector3(
+      (Math.random() - 0.5) * 2,
+      Math.random() * 0.6 + 0.2,
+      (Math.random() - 0.5) * 2
+    ).normalize();
+    const speed = 40 + Math.random() * 90;
+    confettiState.push({
+      pos: origin.clone(),
+      vel: dir.multiplyScalar(speed),
+      rot: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI),
+      rotSpeed: new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6),
+      life: 0,
+      maxLife: 2.2 + Math.random() * 1.2,
+    });
+    const color = new THREE.Color(confettiColors[i % confettiColors.length]);
+    confettiMesh.setColorAt(i, color);
+  }
+  confettiMesh.instanceColor.needsUpdate = true;
+}
+
+function updateConfetti(delta) {
+  if (!confettiMesh.visible) return;
+  let anyAlive = false;
+  for (let i = 0; i < confettiState.length; i++) {
+    const c = confettiState[i];
+    c.life += delta;
+    if (c.life < c.maxLife) anyAlive = true;
+    c.vel.y -= 30 * delta; // gravity-like pull
+    c.pos.addScaledVector(c.vel, delta);
+    c.rot.x += c.rotSpeed.x * delta;
+    c.rot.y += c.rotSpeed.y * delta;
+    c.rot.z += c.rotSpeed.z * delta;
+    confettiDummy.position.copy(c.pos);
+    confettiDummy.rotation.copy(c.rot);
+    const fade = Math.max(0, 1 - c.life / c.maxLife);
+    confettiDummy.scale.setScalar(fade);
+    confettiDummy.updateMatrix();
+    confettiMesh.setMatrixAt(i, confettiDummy.matrix);
+  }
+  confettiMesh.instanceMatrix.needsUpdate = true;
+  if (!anyAlive) confettiMesh.visible = false;
+}
+
+/* ---------------- Hold-to-charge input handling ---------------- */
+function setCharging(active) {
+  if (active) {
+    warpState.phase = 'charging';
+    warpState.chargeStart = performance.now();
+    warpBtn.classList.add('charging');
+  } else if (warpState.phase === 'charging') {
+    warpState.phase = 'idle';
+    warpBtn.classList.remove('charging');
+    warpRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
+  }
+}
+warpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); setCharging(true); });
+warpBtn.addEventListener('pointerup', () => setCharging(false));
+warpBtn.addEventListener('pointerleave', () => setCharging(false));
+warpBtn.addEventListener('pointercancel', () => setCharging(false));
+
+function launchWarp() {
+  warpState.phase = 'warping';
+  warpState.warpStart = performance.now();
+  warpBtn.classList.add('launched');
+  warpBtn.classList.remove('charging');
+  warpStreaks.visible = true;
+  document.body.classList.add('warping');
+  window.removeEventListener('scroll', updateScrollProgress);
+}
+
+replayBtn.addEventListener('click', () => {
+  finaleOverlay.classList.remove('show');
+  confettiMesh.visible = false;
+  warpStreaks.visible = false;
+  warpBtn.classList.remove('launched');
+  warpRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
+  warpState.phase = 'idle';
+  document.body.classList.remove('warping');
+  window.addEventListener('scroll', updateScrollProgress, { passive: true });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  camera.fov = 60;
+  camera.updateProjectionMatrix();
+});
+
 /* ---------------- Animation loop ---------------- */
 const clock = new THREE.Clock();
 const tmpVec = new THREE.Vector3();
@@ -524,13 +686,51 @@ function animate() {
 
   smoothMouseX += (mouseX - smoothMouseX) * 0.04;
   smoothMouseY += (mouseY - smoothMouseY) * 0.04;
-  smoothProgress += (targetProgress - smoothProgress) * 0.06;
 
-  const { pos, look } = cameraForProgress(smoothProgress);
-  camera.position.copy(pos);
-  camera.position.x += smoothMouseX * 14;
-  camera.position.y += -smoothMouseY * 10;
-  camera.lookAt(look);
+  /* ---- Hold-to-charge -> warp -> finale state machine ---- */
+  if (warpState.phase === 'charging') {
+    const chargeT = Math.min(1, (performance.now() - warpState.chargeStart) / (CHARGE_DURATION * 1000));
+    warpRingFill.style.strokeDashoffset = String(RING_CIRCUMFERENCE * (1 - chargeT));
+    if (chargeT >= 1) launchWarp();
+  }
+
+  if (warpState.phase === 'warping') {
+    const warpT = Math.min(1, (performance.now() - warpState.warpStart) / (WARP_DURATION * 1000));
+    const eased = warpT * warpT * (3 - 2 * warpT); // smoothstep easing
+
+    // Fly straight down the -Z axis toward/through the portal, FOV stretching for a warp-speed feel.
+    const startPos = posCurve.getPoint(1);
+    const endPos = new THREE.Vector3(0, 0, portalGroup.position.z - 260);
+    camera.position.lerpVectors(startPos, endPos, eased);
+    camera.lookAt(0, 0, portalGroup.position.z - 400);
+    camera.fov = 60 + eased * 55;
+    camera.updateProjectionMatrix();
+
+    warpStreakMat.uniforms.uOpacity.value = Math.sin(Math.min(1, warpT * 2.5) * Math.PI * 0.5);
+    warpStreaks.position.z = camera.position.z - 40;
+    bloomPass.strength = 0.6 + eased * 0.7;
+
+    if (warpT >= 1 && warpState.phase !== 'done') {
+      warpState.phase = 'done';
+      warpStreaks.visible = false;
+      confettiMesh.visible = true;
+      resetConfetti(new THREE.Vector3(0, 0, camera.position.z - 60));
+      finaleOverlay.classList.add('show');
+    }
+  } else if (warpState.phase === 'done') {
+    // Warp has finished: hold the camera steady looking at the confetti burst,
+    // don't let normal scroll-driven camera logic take back over.
+    camera.lookAt(0, 0, portalGroup.position.z - 400);
+  } else {
+    smoothProgress += (targetProgress - smoothProgress) * 0.06;
+    const { pos, look } = cameraForProgress(smoothProgress);
+    camera.position.copy(pos);
+    camera.position.x += smoothMouseX * 14;
+    camera.position.y += -smoothMouseY * 10;
+    camera.lookAt(look);
+  }
+
+  updateConfetti(delta);
 
   // Gentle idle rotation
   earth.mesh.rotation.y = elapsed * 0.08;
@@ -543,7 +743,9 @@ function animate() {
   disk.rotation.z = elapsed * 0.25;
   eventHorizon.rotation.y = elapsed * 0.05;
 
-  bloomPass.strength = 0.6 + Math.sin(elapsed * 0.5) * 0.1;
+  if (warpState.phase !== 'warping') {
+    bloomPass.strength = 0.6 + Math.sin(elapsed * 0.5) * 0.1;
+  }
 
   // Hover state for click-to-explore
   updateHover();

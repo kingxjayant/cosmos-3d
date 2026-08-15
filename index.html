@@ -81,15 +81,34 @@
     </section>
 
     <section class="panel" id="panel-5">
-      <div class="panel-inner">
+      <div class="panel-inner" id="finale-panel-inner">
         <span class="tag">06 — THE THRESHOLD</span>
         <h2 class="glow-title small">Beyond the Horizon</h2>
-        <p>A final light awaits — bright, patient, and infinite. Step through.</p>
+        <p>A final light awaits — bright, patient, and infinite.</p>
+
+        <button id="warp-hold-btn" aria-label="Press and hold to warp through the portal">
+          <svg class="warp-ring" viewBox="0 0 120 120">
+            <circle class="warp-ring-track" cx="60" cy="60" r="52"></circle>
+            <circle class="warp-ring-fill" id="warp-ring-fill" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <span class="warp-btn-label">HOLD</span>
+        </button>
+        <p class="hint-text">press &amp; hold to step through</p>
+
         <a class="cta" href="https://github.com/kingxjayant/cosmos-3d" target="_blank" rel="noopener">View Source ↗</a>
       </div>
     </section>
 
   </main>
+
+  <!-- Finale overlay, revealed after the warp completes -->
+  <div id="finale-overlay">
+    <div id="finale-overlay-inner">
+      <h2 class="glow-title small">You Made It</h2>
+      <p>Thank you for flying all the way to the edge of COSMOS.</p>
+      <button id="replay-btn">↻ Fly Again</button>
+    </div>
+  </div>
 
   <script type="importmap">
     {
