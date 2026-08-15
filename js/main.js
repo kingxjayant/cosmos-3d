@@ -30,7 +30,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x05060c, 0.0016);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 16000);
 
 /* ---------------- Lighting ---------------- */
 scene.add(new THREE.AmbientLight(0x404060, 1.1));
@@ -296,15 +296,198 @@ function spawnComet() {
 let cometTimer = 0;
 let nextCometAt = 2 + Math.random() * 3;
 
+/* ============================================================
+   OBSERVABLE UNIVERSE SCALE-UP — galaxy -> cosmic web -> CMB
+   Three progressively larger "mega structures" placed further down
+   the -Z axis, so the same scroll-driven camera keeps flying further
+   out in scale after the black hole, ending at the literal edge of
+   what light allows us to see.
+   ============================================================ */
+
+/* ---------------- Milky Way (spiral galaxy, seen from outside) ---------------- */
+const galaxyGroup = new THREE.Group();
+galaxyGroup.position.set(0, 0, -3200);
+
+function makeGalaxyDisc(count, armCount, spread, colorInner, colorOuter) {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const cIn = new THREE.Color(colorInner);
+  const cOut = new THREE.Color(colorOuter);
+  for (let i = 0; i < count; i++) {
+    const armIndex = i % armCount;
+    const armOffset = (armIndex / armCount) * Math.PI * 2;
+    const t = Math.random(); // 0 = core, 1 = edge
+    const radius = t * spread;
+    const spin = radius * 0.045; // spiral twist
+    const angle = armOffset + spin + (Math.random() - 0.5) * 0.6;
+    const scatter = (1 - t) * 12 + t * 40;
+    const x = Math.cos(angle) * radius + (Math.random() - 0.5) * scatter;
+    const z = Math.sin(angle) * radius + (Math.random() - 0.5) * scatter;
+    const y = (Math.random() - 0.5) * (10 + (1 - t) * 30);
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+
+    const mixed = cIn.clone().lerp(cOut, t);
+    colors[i * 3] = mixed.r;
+    colors[i * 3 + 1] = mixed.g;
+    colors[i * 3 + 2] = mixed.b;
+    sizes[i] = 2.2 + Math.random() * 3 + (1 - t) * 2;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  const mat = new THREE.PointsMaterial({
+    size: 3.2, map: glowTex, vertexColors: true, transparent: true, opacity: 0.9,
+    depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
+  });
+  return new THREE.Points(geo, mat);
+}
+
+const galaxyDisc = makeGalaxyDisc(14000, 4, 620, 0xfff2c8, 0x8fbfff);
+galaxyGroup.add(galaxyDisc);
+
+// A soft glowing core
+const galaxyCoreGeo = new THREE.SphereGeometry(60, 32, 32);
+const galaxyCoreMat = new THREE.MeshBasicMaterial({ color: 0xfff0c0, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+const galaxyCore = new THREE.Mesh(galaxyCoreGeo, galaxyCoreMat);
+galaxyGroup.add(galaxyCore);
+const galaxyCoreLight = new THREE.PointLight(0xfff2c8, 1.2, 900);
+galaxyGroup.add(galaxyCoreLight);
+
+scene.add(galaxyGroup);
+clickable.push(Object.assign(galaxyCore, {
+  userData: { id: 'galaxy', facts: { title: 'The Milky Way', text: 'Home to 100-400 billion stars, including our Sun — one grain of light among hundreds of billions, on one arm of this spiral.' } },
+}));
+
+/* ---------------- Cosmic web (galaxy clusters along filaments) ---------------- */
+const cosmicWebGroup = new THREE.Group();
+cosmicWebGroup.position.set(0, 0, -4600);
+
+function makeCosmicWeb(nodeCount, spread) {
+  // Filaments: random walk chains of small glowing "galaxy cluster" points,
+  // connected by faint lines, wrapped around implied dark voids.
+  const group = new THREE.Group();
+  const nodePositions = [];
+  const filamentCount = 9;
+  const linePositions = [];
+
+  for (let f = 0; f < filamentCount; f++) {
+    let pos = new THREE.Vector3(
+      (Math.random() - 0.5) * spread,
+      (Math.random() - 0.5) * spread * 0.5,
+      (Math.random() - 0.5) * spread
+    );
+    const segments = 8 + Math.floor(Math.random() * 6);
+    for (let s = 0; s < segments; s++) {
+      nodePositions.push(pos.clone());
+      const next = pos.clone().add(new THREE.Vector3(
+        (Math.random() - 0.5) * 140,
+        (Math.random() - 0.5) * 60,
+        (Math.random() - 0.5) * 140
+      ));
+      linePositions.push(pos.x, pos.y, pos.z, next.x, next.y, next.z);
+      pos = next;
+    }
+  }
+
+  // Glowing cluster nodes
+  const count = nodePositions.length;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const colorA = new THREE.Color(0xffe6a8);
+  const colorB = new THREE.Color(0x9fc8ff);
+  nodePositions.forEach((p, i) => {
+    positions[i * 3] = p.x;
+    positions[i * 3 + 1] = p.y;
+    positions[i * 3 + 2] = p.z;
+    const mixed = colorA.clone().lerp(colorB, Math.random());
+    colors[i * 3] = mixed.r;
+    colors[i * 3 + 1] = mixed.g;
+    colors[i * 3 + 2] = mixed.b;
+  });
+  const nodeGeo = new THREE.BufferGeometry();
+  nodeGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  nodeGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const nodeMat = new THREE.PointsMaterial({
+    size: 9, map: glowTex, vertexColors: true, transparent: true, opacity: 0.95,
+    depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
+  });
+  group.add(new THREE.Points(nodeGeo, nodeMat));
+
+  // Faint filament connective lines
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePositions), 3));
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x6f8fc9, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending });
+  group.add(new THREE.LineSegments(lineGeo, lineMat));
+
+  return group;
+}
+
+const cosmicWeb = makeCosmicWeb(0, 1400);
+cosmicWebGroup.add(cosmicWeb);
+scene.add(cosmicWebGroup);
+
+/* ---------------- Cosmic Microwave Background (edge of observable universe) ---------------- */
+const cmbGroup = new THREE.Group();
+cmbGroup.position.set(0, 0, -6200);
+
+function makeCMBSphere(radius) {
+  // A large inward-facing sphere with a mottled, low-contrast noise pattern
+  // painted via canvas — stands in for the CMB's famous "baby picture of the universe" look.
+  const size = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const base = ctx.createImageData(size, size);
+  for (let i = 0; i < base.data.length; i += 4) {
+    // Layered pseudo-random blobs by sampling low-frequency noise via sine sums
+    const x = (i / 4) % size;
+    const y = Math.floor((i / 4) / size);
+    const n =
+      Math.sin(x * 0.04 + y * 0.03) +
+      Math.sin(x * 0.017 - y * 0.05 + 2.1) +
+      Math.sin((x + y) * 0.021 + 4.4);
+    const v = 0.5 + 0.5 * (n / 3);
+    // Classic CMB palette: deep blue/orange mottling
+    const r = 30 + v * 130;
+    const g = 40 + v * 80;
+    const b = 70 + (1 - v) * 90;
+    base.data[i] = r;
+    base.data[i + 1] = g;
+    base.data[i + 2] = b;
+    base.data[i + 3] = 255;
+  }
+  ctx.putImageData(base, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+
+  const geo = new THREE.SphereGeometry(radius, 48, 32);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, transparent: true, opacity: 0.22, fog: false });
+  return new THREE.Mesh(geo, mat);
+}
+
+const cmbSphere = makeCMBSphere(2400);
+cmbGroup.add(cmbSphere);
+scene.add(cmbGroup);
+clickable.push(Object.assign(cmbSphere, {
+  userData: { id: 'cmb', facts: { title: 'Cosmic Microwave Background', text: "The oldest light in existence — released 380,000 years after the Big Bang, 13.8 billion years ago. This is the literal edge of the observable universe: not a wall, just the furthest that light has had time to travel to reach us." } },
+}));
+
 /* ---------------- Camera path (keyframes) ---------------- */
 const keyframes = [
   { t: 0.00, pos: new THREE.Vector3(0, 10, 260), look: new THREE.Vector3(0, 0, 0) },
-  { t: 0.15, pos: new THREE.Vector3(30, -5, 0), look: earth.mesh.position },
-  { t: 0.32, pos: new THREE.Vector3(-90, 20, -420), look: mars.mesh.position },
-  { t: 0.50, pos: new THREE.Vector3(140, 0, -880), look: giant.mesh.position },
-  { t: 0.68, pos: new THREE.Vector3(-40, 30, -1420), look: new THREE.Vector3(-80, 0, -1500) },
-  { t: 0.85, pos: new THREE.Vector3(90, 55, -1600), look: blackHolePosition },
-  { t: 1.00, pos: new THREE.Vector3(20, 0, -2040), look: new THREE.Vector3(0, 0, -2100) },
+  { t: 0.11, pos: new THREE.Vector3(30, -5, 0), look: earth.mesh.position },
+  { t: 0.24, pos: new THREE.Vector3(-90, 20, -420), look: mars.mesh.position },
+  { t: 0.37, pos: new THREE.Vector3(140, 0, -880), look: giant.mesh.position },
+  { t: 0.50, pos: new THREE.Vector3(-40, 30, -1420), look: new THREE.Vector3(-80, 0, -1500) },
+  { t: 0.62, pos: new THREE.Vector3(90, 55, -1600), look: blackHolePosition },
+  { t: 0.71, pos: new THREE.Vector3(150, 260, -2900), look: galaxyGroup.position },
+  { t: 0.81, pos: new THREE.Vector3(-120, 150, -4300), look: cosmicWebGroup.position },
+  { t: 0.91, pos: new THREE.Vector3(60, 40, -5700), look: cmbGroup.position },
+  { t: 1.00, pos: new THREE.Vector3(20, 0, -6180), look: new THREE.Vector3(0, 0, -6300) },
 ];
 
 const posPoints = keyframes.map((k) => k.pos);
@@ -333,7 +516,7 @@ const portalCoreMat = new THREE.MeshBasicMaterial({ color: 0xdff3ff, transparent
 const portalCore = new THREE.Mesh(portalCoreGeo, portalCoreMat);
 portalGroup.add(portalCore);
 
-portalGroup.position.set(0, 0, -2200);
+portalGroup.position.set(0, 0, -6400);
 scene.add(portalGroup);
 
 const portalLight = new THREE.PointLight(0x9fd8ff, 1.6, 700);
@@ -756,8 +939,8 @@ function animate() {
   cursorY += (cursorTY - cursorY) * 0.2;
   cursorEl.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
 
-  // Gravitational lensing: ramp strength when near the black-hole chapter (t ~= 0.85)
-  const blackHoleDist = Math.abs(smoothProgress - 0.85);
+  // Gravitational lensing: ramp strength when near the black-hole chapter (t ~= 0.62)
+  const blackHoleDist = Math.abs(smoothProgress - 0.62);
   const lensStrength = Math.max(0, 1 - blackHoleDist / 0.08);
   tmpVec.copy(blackHolePosition).project(camera);
   lensingPass.uniforms.uCenter.value.set((tmpVec.x + 1) / 2, (tmpVec.y + 1) / 2);
