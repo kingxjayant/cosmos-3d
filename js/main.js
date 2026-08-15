@@ -2,20 +2,23 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /* ============================================================
    COSMOS — a scroll-driven 3D journey through space
    Built for the 3D Websites Hackathon.
 
-   Structure:
-   - A single Three.js scene containing a starfield, several
-     planets, a particle nebula, and a glowing "portal" at the end.
-   - The camera follows a hand-authored path (an array of keyframe
-     positions/targets). Scroll progress (0..1) interpolates smoothly
-     between keyframes using catmull-rom splines, so scrolling feels
-     like flying a slow, cinematic camera through space.
-   - Bloom post-processing gives the glowing sci-fi look.
+   Chapters: Departure -> Mars -> Gas Giant -> Nebula -> Black Hole -> Portal
+
+   Highlights:
+   - Scroll-driven cinematic camera flying along a Catmull-Rom spline
+   - Twinkling, glowing stars via a custom point shader
+   - Fresnel "atmosphere" glow shader on planets
+   - Randomly spawned comets streaking across the sky
+   - Click-to-explore planets with info cards (real interactivity, not just scroll)
+   - A gravitational-lensing screen-space distortion pass around a black hole
+   - Custom glowing cursor + optional generated ambient soundscape
    ============================================================ */
 
 const canvas = document.getElementById('bg');
@@ -25,12 +28,12 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x05060c, 0.0018);
+scene.fog = new THREE.FogExp2(0x05060c, 0.0016);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
 
 /* ---------------- Lighting ---------------- */
-scene.add(new THREE.AmbientLight(0x404060, 1.2));
+scene.add(new THREE.AmbientLight(0x404060, 1.1));
 const sunLight = new THREE.PointLight(0xfff2d0, 3, 0, 0);
 sunLight.position.set(-400, 80, -600);
 scene.add(sunLight);
@@ -39,9 +42,51 @@ const rimLight = new THREE.PointLight(0x7dd8ff, 2, 0, 0);
 rimLight.position.set(300, -100, 200);
 scene.add(rimLight);
 
-/* ---------------- Starfield ---------------- */
-function makeStarfield(count, radius, size, color) {
+/* ---------------- Soft circular sprite texture (used for stars/nebula/comets) ---------------- */
+function makeGlowTexture() {
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.7)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+const glowTex = makeGlowTexture();
+
+/* ---------------- Twinkling starfield (custom shader) ---------------- */
+const starVertexShader = `
+  attribute float aRandom;
+  attribute float aSize;
+  uniform float uTime;
+  varying float vAlpha;
+  void main() {
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * (420.0 / -mvPosition.z);
+    gl_Position = projectionMatrix * mvPosition;
+    vAlpha = 0.45 + 0.55 * sin(uTime * (0.6 + aRandom * 1.8) + aRandom * 6.2831);
+  }
+`;
+const starFragmentShader = `
+  uniform sampler2D uMap;
+  uniform vec3 uColor;
+  varying float vAlpha;
+  void main() {
+    vec4 tex = texture2D(uMap, gl_PointCoord);
+    gl_FragColor = vec4(uColor, tex.a * vAlpha);
+  }
+`;
+
+function makeTwinklingStars(count, radius, size, color) {
   const positions = new Float32Array(count * 3);
+  const randoms = new Float32Array(count);
+  const sizes = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     const r = radius * (0.4 + Math.random() * 0.6);
     const theta = Math.random() * Math.PI * 2;
@@ -49,28 +94,87 @@ function makeStarfield(count, radius, size, color) {
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     positions[i * 3 + 2] = r * Math.cos(phi);
+    randoms[i] = Math.random();
+    sizes[i] = size * (0.6 + Math.random() * 0.8);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({
-    color, size, sizeAttenuation: true, transparent: true, opacity: 0.9,
-    depthWrite: false, blending: THREE.AdditiveBlending,
+  geo.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+  geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uMap: { value: glowTex }, uColor: { value: new THREE.Color(color) } },
+    vertexShader: starVertexShader,
+    fragmentShader: starFragmentShader,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
   });
   return new THREE.Points(geo, mat);
 }
 
-scene.add(makeStarfield(6000, 2200, 1.6, 0xffffff));
-scene.add(makeStarfield(2500, 1400, 2.6, 0x9fd8ff));
-scene.add(makeStarfield(900, 900, 4, 0xffe3c2));
+const starLayers = [
+  makeTwinklingStars(5000, 2200, 3.2, 0xffffff),
+  makeTwinklingStars(2200, 1400, 5.0, 0x9fd8ff),
+  makeTwinklingStars(800, 900, 7.5, 0xffe3c2),
+];
+starLayers.forEach((s) => scene.add(s));
+
+/* ---------------- Fresnel atmosphere glow (shader material) ---------------- */
+const atmosphereVertex = `
+  varying vec3 vNormal;
+  varying vec3 vViewPosition;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vViewPosition = -mvPosition.xyz;
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+const atmosphereFragment = `
+  varying vec3 vNormal;
+  varying vec3 vViewPosition;
+  uniform vec3 glowColor;
+  uniform float power;
+  uniform float intensityMul;
+  void main() {
+    vec3 viewDir = normalize(vViewPosition);
+    // Fresnel rim: 0 at the center of the sphere (facing camera), 1 at the grazing edge.
+    float fresnel = pow(1.0 - clamp(dot(vNormal, viewDir), 0.0, 1.0), power);
+    gl_FragColor = vec4(glowColor, fresnel * intensityMul);
+  }
+`;
+function makeAtmosphere(radius, color, power = 2.5) {
+  const geo = new THREE.SphereGeometry(radius * 1.08, 48, 48);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: atmosphereVertex,
+    fragmentShader: atmosphereFragment,
+    uniforms: { glowColor: { value: new THREE.Color(color) }, power: { value: power }, intensityMul: { value: 0.55 } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+  });
+  return new THREE.Mesh(geo, mat);
+}
 
 /* ---------------- Planets ---------------- */
-function makePlanet({ radius, position, color, emissive = 0x000000, ring = false, roughness = 0.85 }) {
+const clickable = []; // meshes the user can click to learn more about
+
+function makePlanet({ id, radius, position, color, emissive = 0x000000, ring = false, roughness = 0.85, atmosphere = null, facts }) {
   const group = new THREE.Group();
   const geo = new THREE.SphereGeometry(radius, 48, 48);
   const mat = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.15, emissive, emissiveIntensity: 0.3 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.copy(position);
+  mesh.userData = { id, facts, baseScale: 1 };
   group.add(mesh);
+  clickable.push(mesh);
+
+  if (atmosphere) {
+    const glow = makeAtmosphere(radius, atmosphere);
+    glow.position.copy(position);
+    group.add(glow);
+  }
 
   if (ring) {
     const ringGeo = new THREE.RingGeometry(radius * 1.4, radius * 2.1, 64);
@@ -84,34 +188,35 @@ function makePlanet({ radius, position, color, emissive = 0x000000, ring = false
   return { group, mesh };
 }
 
-// Earth-like (near the start)
 const earth = makePlanet({
-  radius: 26, position: new THREE.Vector3(60, -20, -80),
-  color: 0x2f6fb0, emissive: 0x0a1f33,
+  id: 'earth', radius: 26, position: new THREE.Vector3(60, -20, -80),
+  color: 0x2f6fb0, emissive: 0x0a1f33, atmosphere: 0x6fc3ff,
+  facts: { title: 'Home', text: 'Every journey has a beginning. This pale blue dot is ours — 4.5 billion years old, and still the only place we know of that dreams.' },
 });
 
-// Mars-like (section 2)
 const mars = makePlanet({
-  radius: 18, position: new THREE.Vector3(-140, 30, -520),
-  color: 0xb3583a, emissive: 0x3a140a,
+  id: 'mars', radius: 18, position: new THREE.Vector3(-140, 30, -520),
+  color: 0xb3583a, emissive: 0x3a140a, atmosphere: 0xff8a5c,
+  facts: { title: 'The Red World', text: 'Home to Olympus Mons, the largest volcano in the solar system — nearly three times the height of Everest.' },
 });
 
-// Gas giant with ring (section 3)
 const giant = makePlanet({
-  radius: 60, position: new THREE.Vector3(220, -40, -1000),
-  color: 0xd9a15c, emissive: 0x3a2a10, ring: 0x8bd8ff,
+  id: 'giant', radius: 60, position: new THREE.Vector3(220, -40, -1000),
+  color: 0xd9a15c, emissive: 0x3a2a10, ring: 0x8bd8ff, atmosphere: 0xffd58a,
+  facts: { title: 'The Giant', text: 'A world with no solid surface — just endless bands of storm, some larger than entire planets, raging for centuries.' },
 });
 
-// Distant icy moon
 const moon = makePlanet({
-  radius: 10, position: new THREE.Vector3(310, 60, -960),
+  id: 'moon', radius: 10, position: new THREE.Vector3(310, 60, -960),
   color: 0xcfd8e6, emissive: 0x111827,
+  facts: { title: 'A Quiet Moon', text: 'Frozen and silent, it has watched the giant spin for longer than life has existed on Earth.' },
 });
 
 /* ---------------- Nebula (particle cloud) ---------------- */
 function makeNebula(center, spread, count, colors) {
   const positions = new Float32Array(count * 3);
   const colorArr = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
   const c = colors.map((hex) => new THREE.Color(hex));
   for (let i = 0; i < count; i++) {
     positions[i * 3] = center.x + (Math.random() - 0.5) * spread;
@@ -121,13 +226,14 @@ function makeNebula(center, spread, count, colors) {
     colorArr[i * 3] = col.r;
     colorArr[i * 3 + 1] = col.g;
     colorArr[i * 3 + 2] = col.b;
+    sizes[i] = 8 + Math.random() * 14;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
   const mat = new THREE.PointsMaterial({
-    size: 7, transparent: true, opacity: 0.55, vertexColors: true,
-    depthWrite: false, blending: THREE.AdditiveBlending,
+    size: 10, map: glowTex, transparent: true, opacity: 0.6, vertexColors: true,
+    depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
   });
   return new THREE.Points(geo, mat);
 }
@@ -138,36 +244,67 @@ const nebula = makeNebula(
 );
 scene.add(nebula);
 
-/* ---------------- Portal (final destination) ---------------- */
-const portalGroup = new THREE.Group();
-const portalGeo = new THREE.TorusGeometry(70, 6, 32, 128);
-const portalMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff, emissive: 0x7dd8ff, emissiveIntensity: 2.2, roughness: 0.2, metalness: 0.6,
+/* ---------------- Black hole (signature moment + lensing distortion) ---------------- */
+const blackHolePosition = new THREE.Vector3(20, 0, -1780);
+
+const eventHorizonGeo = new THREE.SphereGeometry(38, 64, 64);
+const eventHorizonMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const eventHorizon = new THREE.Mesh(eventHorizonGeo, eventHorizonMat);
+eventHorizon.position.copy(blackHolePosition);
+scene.add(eventHorizon);
+
+// A thin, bright accretion disk made of an additive ring texture
+const diskGeo = new THREE.RingGeometry(42, 78, 128, 1);
+const diskMat = new THREE.MeshBasicMaterial({
+  color: 0xffb877, side: THREE.DoubleSide, transparent: true, opacity: 0.42,
+  blending: THREE.AdditiveBlending, depthWrite: false,
 });
-const portalRing = new THREE.Mesh(portalGeo, portalMat);
-portalGroup.add(portalRing);
+const disk = new THREE.Mesh(diskGeo, diskMat);
+disk.position.copy(blackHolePosition);
+disk.rotation.x = Math.PI / 2.15;
+scene.add(disk);
 
-const portalCoreGeo = new THREE.CircleGeometry(64, 64);
-const portalCoreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
-const portalCore = new THREE.Mesh(portalCoreGeo, portalCoreMat);
-portalGroup.add(portalCore);
+const diskGlowLight = new THREE.PointLight(0xffb37a, 1.4, 500);
+diskGlowLight.position.copy(blackHolePosition);
+scene.add(diskGlowLight);
 
-portalGroup.position.set(0, 0, -2000);
-scene.add(portalGroup);
+clickable.push(Object.assign(eventHorizon, {
+  userData: { id: 'blackhole', facts: { title: 'The Singularity', text: 'Where gravity wins completely. Light itself cannot escape — everything we know about physics simply... stops.' } },
+}));
 
-const portalLight = new THREE.PointLight(0x9fd8ff, 4, 900);
-portalLight.position.copy(portalGroup.position);
-scene.add(portalLight);
+/* ---------------- Comets (randomly spawned shooting stars) ---------------- */
+const comets = [];
+function spawnComet() {
+  const trailLength = 60 + Math.random() * 60;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array([0, 0, 0, -trailLength, 0, 0]);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+  const line = new THREE.Line(geo, mat);
+
+  const startX = -600 + Math.random() * 1200;
+  const startY = 200 + Math.random() * 300;
+  const startZ = -400 - Math.random() * 1200;
+  line.position.set(startX, startY, startZ);
+
+  const dir = new THREE.Vector3(-1 - Math.random(), -0.6 - Math.random() * 0.4, Math.random() * 0.4 - 0.2).normalize();
+  line.lookAt(line.position.clone().add(dir));
+
+  scene.add(line);
+  comets.push({ mesh: line, dir, speed: 500 + Math.random() * 300, life: 0, maxLife: 1.4 + Math.random() * 0.6 });
+}
+let cometTimer = 0;
+let nextCometAt = 2 + Math.random() * 3;
 
 /* ---------------- Camera path (keyframes) ---------------- */
-// Each keyframe: camera position + look-at target, at scroll progress t (0..1)
 const keyframes = [
   { t: 0.00, pos: new THREE.Vector3(0, 10, 260), look: new THREE.Vector3(0, 0, 0) },
-  { t: 0.18, pos: new THREE.Vector3(30, -5, 0), look: earth.mesh.position },
-  { t: 0.38, pos: new THREE.Vector3(-90, 20, -420), look: mars.mesh.position },
-  { t: 0.58, pos: new THREE.Vector3(140, 0, -880), look: giant.mesh.position },
-  { t: 0.80, pos: new THREE.Vector3(-40, 30, -1420), look: new THREE.Vector3(-80, 0, -1500) },
-  { t: 1.00, pos: new THREE.Vector3(0, 0, -1880), look: portalGroup.position },
+  { t: 0.15, pos: new THREE.Vector3(30, -5, 0), look: earth.mesh.position },
+  { t: 0.32, pos: new THREE.Vector3(-90, 20, -420), look: mars.mesh.position },
+  { t: 0.50, pos: new THREE.Vector3(140, 0, -880), look: giant.mesh.position },
+  { t: 0.68, pos: new THREE.Vector3(-40, 30, -1420), look: new THREE.Vector3(-80, 0, -1500) },
+  { t: 0.85, pos: new THREE.Vector3(90, 55, -1600), look: blackHolePosition },
+  { t: 1.00, pos: new THREE.Vector3(20, 0, -2040), look: new THREE.Vector3(0, 0, -2100) },
 ];
 
 const posPoints = keyframes.map((k) => k.pos);
@@ -182,28 +319,72 @@ function cameraForProgress(t) {
   return { pos, look };
 }
 
-/* ---------------- Post-processing (bloom) ---------------- */
+/* ---------------- Portal (final destination) ---------------- */
+const portalGroup = new THREE.Group();
+const portalGeo = new THREE.TorusGeometry(70, 6, 32, 128);
+const portalMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff, emissive: 0x7dd8ff, emissiveIntensity: 2.2, roughness: 0.2, metalness: 0.6,
+});
+const portalRing = new THREE.Mesh(portalGeo, portalMat);
+portalGroup.add(portalRing);
+
+const portalCoreGeo = new THREE.CircleGeometry(58, 64);
+const portalCoreMat = new THREE.MeshBasicMaterial({ color: 0xdff3ff, transparent: true, opacity: 0.8 });
+const portalCore = new THREE.Mesh(portalCoreGeo, portalCoreMat);
+portalGroup.add(portalCore);
+
+portalGroup.position.set(0, 0, -2200);
+scene.add(portalGroup);
+
+const portalLight = new THREE.PointLight(0x9fd8ff, 1.6, 700);
+portalLight.position.copy(portalGroup.position);
+scene.add(portalLight);
+
+/* ---------------- Gravitational lensing post-processing pass ---------------- */
+const LensingShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+    uStrength: { value: 0.0 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uCenter;
+    uniform float uStrength;
+    varying vec2 vUv;
+    void main() {
+      vec2 toCenter = vUv - uCenter;
+      float dist = length(toCenter);
+      float radius = 0.42;
+      float effect = uStrength * smoothstep(radius, 0.0, dist);
+      float angle = effect * 2.4;
+      float s = sin(angle);
+      float c = cos(angle);
+      vec2 rotated = vec2(c * toCenter.x - s * toCenter.y, s * toCenter.x + c * toCenter.y);
+      vec2 pulled = rotated * (1.0 - effect * 0.85);
+      vec2 newUv = uCenter + pulled;
+      gl_FragColor = texture2D(tDiffuse, newUv);
+    }
+  `,
+};
+const lensingPass = new ShaderPass(LensingShader);
+
+/* ---------------- Post-processing ---------------- */
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.9, 0.6, 0.15
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.65, 0.55, 0.35
 );
 composer.addPass(bloomPass);
+composer.addPass(lensingPass);
 composer.addPass(new OutputPass());
-
-/* ---------------- Mouse parallax (adds a subtle "looking around" feel) ---------------- */
-let mouseX = 0, mouseY = 0;
-let smoothMouseX = 0, smoothMouseY = 0;
-window.addEventListener('mousemove', (e) => {
-  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
-  mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
-});
-window.addEventListener('touchmove', (e) => {
-  const t = e.touches[0];
-  if (!t) return;
-  mouseX = (t.clientX / window.innerWidth - 0.5) * 2;
-  mouseY = (t.clientY / window.innerHeight - 0.5) * 2;
-}, { passive: true });
 
 /* ---------------- Scroll progress ---------------- */
 let targetProgress = 0;
@@ -221,7 +402,7 @@ updateScrollProgress();
 
 /* ---------------- Reveal panels on scroll ---------------- */
 const panels = document.querySelectorAll('.panel-inner');
-const observer = new IntersectionObserver(
+const revealObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) entry.target.classList.add('visible');
@@ -229,7 +410,67 @@ const observer = new IntersectionObserver(
   },
   { threshold: 0.35 }
 );
-panels.forEach((p) => observer.observe(p));
+panels.forEach((p) => revealObserver.observe(p));
+
+/* ---------------- Mouse / touch tracking (parallax + raycasting) ---------------- */
+let mouseX = 0, mouseY = 0;
+let smoothMouseX = 0, smoothMouseY = 0;
+const mouseNDC = new THREE.Vector2(-10, -10);
+const raycaster = new THREE.Raycaster();
+
+function setMouseFromClient(clientX, clientY) {
+  mouseX = (clientX / window.innerWidth - 0.5) * 2;
+  mouseY = (clientY / window.innerHeight - 0.5) * 2;
+  mouseNDC.set(mouseX, -mouseY);
+}
+window.addEventListener('mousemove', (e) => setMouseFromClient(e.clientX, e.clientY));
+window.addEventListener('touchmove', (e) => {
+  const t = e.touches[0];
+  if (t) setMouseFromClient(t.clientX, t.clientY);
+}, { passive: true });
+
+/* ---------------- Custom glowing cursor ---------------- */
+const cursorEl = document.createElement('div');
+cursorEl.id = 'custom-cursor';
+document.body.appendChild(cursorEl);
+let cursorX = window.innerWidth / 2, cursorY = window.innerHeight / 2;
+let cursorTX = cursorX, cursorTY = cursorY;
+window.addEventListener('mousemove', (e) => { cursorTX = e.clientX; cursorTY = e.clientY; });
+
+/* ---------------- Click-to-explore info panel ---------------- */
+const infoPanel = document.createElement('div');
+infoPanel.id = 'info-panel';
+infoPanel.innerHTML = `
+  <div id="info-panel-inner">
+    <span id="info-panel-close">✕</span>
+    <span id="info-panel-title"></span>
+    <p id="info-panel-text"></p>
+  </div>
+`;
+document.body.appendChild(infoPanel);
+const infoTitleEl = document.getElementById('info-panel-title');
+const infoTextEl = document.getElementById('info-panel-text');
+document.getElementById('info-panel-close').addEventListener('click', () => infoPanel.classList.remove('open'));
+
+let hovered = null;
+function updateHover() {
+  raycaster.setFromCamera(mouseNDC, camera);
+  const intersects = raycaster.intersectObjects(clickable, false);
+  const hit = intersects.length ? intersects[0].object : null;
+  if (hit !== hovered) {
+    if (hovered) cursorEl.classList.remove('hover');
+    hovered = hit;
+    if (hovered) cursorEl.classList.add('hover');
+  }
+}
+canvas.addEventListener('click', () => {
+  if (!hovered) return;
+  const facts = hovered.userData.facts;
+  if (!facts) return;
+  infoTitleEl.textContent = facts.title;
+  infoTextEl.textContent = facts.text;
+  infoPanel.classList.add('open');
+});
 
 /* ---------------- Resize ---------------- */
 window.addEventListener('resize', () => {
@@ -272,16 +513,18 @@ soundBtn.addEventListener('click', () => {
 
 /* ---------------- Animation loop ---------------- */
 const clock = new THREE.Clock();
+const tmpVec = new THREE.Vector3();
 
 function animate() {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
+  const delta = clock.getDelta();
 
-  // Smooth-follow the real scroll progress (adds a nice cinematic lag)
-  smoothProgress += (targetProgress - smoothProgress) * 0.06;
+  starLayers.forEach((s) => { s.material.uniforms.uTime.value = elapsed; });
 
   smoothMouseX += (mouseX - smoothMouseX) * 0.04;
   smoothMouseY += (mouseY - smoothMouseY) * 0.04;
+  smoothProgress += (targetProgress - smoothProgress) * 0.06;
 
   const { pos, look } = cameraForProgress(smoothProgress);
   camera.position.copy(pos);
@@ -289,7 +532,7 @@ function animate() {
   camera.position.y += -smoothMouseY * 10;
   camera.lookAt(look);
 
-  // Gentle idle rotation for planets & portal
+  // Gentle idle rotation
   earth.mesh.rotation.y = elapsed * 0.08;
   mars.mesh.rotation.y = elapsed * 0.06;
   giant.group.rotation.y = elapsed * 0.03;
@@ -297,8 +540,47 @@ function animate() {
   portalGroup.rotation.z = elapsed * 0.15;
   portalCore.material.opacity = 0.75 + Math.sin(elapsed * 2) * 0.15;
   nebula.rotation.y = elapsed * 0.01;
+  disk.rotation.z = elapsed * 0.25;
+  eventHorizon.rotation.y = elapsed * 0.05;
 
-  bloomPass.strength = 0.9 + Math.sin(elapsed * 0.5) * 0.15;
+  bloomPass.strength = 0.6 + Math.sin(elapsed * 0.5) * 0.1;
+
+  // Hover state for click-to-explore
+  updateHover();
+  canvas.style.cursor = hovered ? 'none' : 'none';
+
+  // Custom cursor follow
+  cursorX += (cursorTX - cursorX) * 0.2;
+  cursorY += (cursorTY - cursorY) * 0.2;
+  cursorEl.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
+
+  // Gravitational lensing: ramp strength when near the black-hole chapter (t ~= 0.85)
+  const blackHoleDist = Math.abs(smoothProgress - 0.85);
+  const lensStrength = Math.max(0, 1 - blackHoleDist / 0.08);
+  tmpVec.copy(blackHolePosition).project(camera);
+  lensingPass.uniforms.uCenter.value.set((tmpVec.x + 1) / 2, (tmpVec.y + 1) / 2);
+  lensingPass.uniforms.uStrength.value = lensStrength * 0.5;
+  diskGlowLight.intensity = 1.2 + lensStrength * 1.6;
+
+  // Comets
+  cometTimer += delta;
+  if (cometTimer > nextCometAt) {
+    cometTimer = 0;
+    nextCometAt = 2.5 + Math.random() * 4;
+    spawnComet();
+  }
+  for (let i = comets.length - 1; i >= 0; i--) {
+    const c = comets[i];
+    c.life += delta;
+    c.mesh.position.addScaledVector(c.dir, c.speed * delta);
+    c.mesh.material.opacity = Math.max(0, 0.9 * (1 - c.life / c.maxLife));
+    if (c.life >= c.maxLife) {
+      scene.remove(c.mesh);
+      c.mesh.geometry.dispose();
+      c.mesh.material.dispose();
+      comets.splice(i, 1);
+    }
+  }
 
   composer.render();
 }

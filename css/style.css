@@ -108,6 +108,7 @@ html, body {
 #scroll-content {
   position: relative;
   z-index: 10;
+  pointer-events: none;
 }
 
 .panel {
@@ -117,6 +118,7 @@ html, body {
   justify-content: center;
   padding: 6vh 8vw;
   text-align: center;
+  pointer-events: none; /* let clicks pass through to the 3D canvas below */
 }
 .panel.align-left { justify-content: flex-start; text-align: left; }
 .panel.align-right { justify-content: flex-end; text-align: right; }
@@ -126,6 +128,11 @@ html, body {
   opacity: 0;
   transform: translateY(40px);
   transition: opacity 1s ease, transform 1s ease;
+  pointer-events: none;
+}
+.panel-inner a,
+.panel-inner button {
+  pointer-events: auto; /* re-enable for actual interactive elements like the CTA link */
 }
 .panel-inner.visible {
   opacity: 1;
@@ -234,6 +241,100 @@ p {
 @keyframes fadeInOut {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
+}
+
+.hint-text {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+/* ---------- Custom glowing cursor ---------- */
+#custom-cursor {
+  position: fixed;
+  top: 0; left: 0;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(125,216,255,0.9) 0%, rgba(125,216,255,0.25) 55%, transparent 75%);
+  pointer-events: none;
+  z-index: 80;
+  transition: width 0.25s ease, height 0.25s ease, margin 0.25s ease, background 0.25s ease;
+  mix-blend-mode: screen;
+}
+#custom-cursor.hover {
+  width: 46px;
+  height: 46px;
+  margin-left: -23px;
+  margin-top: -23px;
+  background: radial-gradient(circle, rgba(255,158,207,0.95) 0%, rgba(185,139,255,0.35) 55%, transparent 75%);
+}
+@media (hover: none) {
+  #custom-cursor { display: none; }
+}
+
+/* ---------- Click-to-explore info panel ---------- */
+#info-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 3, 8, 0.55);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+#info-panel.open {
+  opacity: 1;
+  visibility: visible;
+}
+#info-panel-inner {
+  position: relative;
+  max-width: 460px;
+  margin: 24px;
+  padding: 40px 36px;
+  background: linear-gradient(160deg, rgba(20, 24, 42, 0.9), rgba(10, 12, 22, 0.9));
+  border: 1px solid rgba(125, 216, 255, 0.25);
+  border-radius: 20px;
+  box-shadow: 0 0 60px rgba(125, 216, 255, 0.15);
+  transform: translateY(16px) scale(0.97);
+  transition: transform 0.4s ease;
+}
+#info-panel.open #info-panel-inner {
+  transform: translateY(0) scale(1);
+}
+#info-panel-close {
+  position: absolute;
+  top: 16px; right: 20px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 1rem;
+  transition: color 0.2s ease;
+}
+#info-panel-close:hover { color: var(--text); }
+#info-panel-title {
+  display: block;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  background: linear-gradient(120deg, #fff, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 14px;
+}
+#info-panel p {
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1.7;
+  margin: 0;
 }
 
 @media (max-width: 720px) {

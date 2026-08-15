@@ -4,22 +4,25 @@
 
 Built for the [3D Websites Hackathon](https://3d-websites-hackathon.devpost.com/).
 
-🔗 **Live demo:** _add your Render/Netlify/Vercel URL here after deploying_
+🔗 **Live demo:** https://kingxjayant.github.io/cosmos-3d/
 📦 **Source:** https://github.com/kingxjayant/cosmos-3d
 
 ---
 
 ## What it is
 
-There's no problem being solved here — this hackathon is about creating *wonder*, not utility. COSMOS is a single-page 3D experience: as you scroll, a virtual camera flies along a hand-authored path through a procedurally generated universe. Each scroll "chapter" reveals a new part of the journey — departure from Earth, a pass by Mars, an asteroid belt leading to a gas giant, a colorful particle nebula, and a final glowing portal.
+There's no problem being solved here — this hackathon is about creating *wonder*, not utility. COSMOS is a single-page 3D experience: as you scroll, a virtual camera flies along a hand-authored path through a procedurally generated universe. Each scroll "chapter" reveals a new part of the journey — departure from Earth, a pass by Mars, an asteroid belt leading to a gas giant, a colorful particle nebula, a black hole bending light around it, and a final glowing portal.
 
 ## How it works
 
-- **Three.js** renders the whole scene: a multi-layered starfield (three point-cloud shells at different radii/sizes/colors for depth), several textured/lit planet meshes (Earth, Mars, a ringed gas giant, a small moon), a 3,200-particle nebula cloud with per-particle color variation, and a glowing torus "portal" at the very end.
+- **Three.js** renders the whole scene: a multi-layered twinkling starfield (custom vertex/fragment shader so every star pulses independently), several planet meshes (Earth, Mars, a ringed gas giant, a small moon) each wrapped in a Fresnel "atmosphere glow" shader, a 3,200-particle nebula cloud with per-particle color variation, a black hole with a glowing accretion disk, and a glowing torus "portal" at the very end.
 - **Scroll = camera position.** Scroll progress (0 → 1) is smoothed and fed into two `CatmullRomCurve3` splines — one for camera position, one for the look-at target — built from a small set of hand-placed keyframes. This turns scrolling into a smooth, cinematic flight path instead of a jump-cut between fixed camera positions.
+- **Click-to-explore interactivity.** Planets (and the black hole) are raycast-tested against the mouse every frame; hovering morphs a custom glowing cursor, and clicking opens an info card with a short fact about that body — real interaction, not just passive scrolling.
+- **Gravitational lensing.** Near the black-hole chapter, a custom `ShaderPass` warps the screen-space image around the event horizon's projected screen position, growing and shrinking smoothly as you scroll toward and away from it.
+- **Randomly spawned comets** streak across the sky on a timer, each with a fading line-trail.
 - **Mouse/touch parallax** subtly offsets the camera based on cursor position, so the scene feels alive even when you're not scrolling.
 - **UnrealBloomPass** post-processing (via `EffectComposer`) gives the glowing, sci-fi look to the stars, planet rims, and portal.
-- Section text panels fade/slide in via `IntersectionObserver` as they scroll into view.
+- Section text panels fade/slide in via `IntersectionObserver` as they scroll into view; panels use `pointer-events: none` (with `auto` re-enabled only on real links/buttons) so clicks pass through to the 3D scene underneath.
 - An optional ambient drone (built from a few `OscillatorNode`s — no external audio files needed) can be toggled on with the speaker button, bottom-right.
 - Everything is vanilla HTML/CSS/JS + Three.js loaded via an import map from a CDN — **no build step, no bundler, no npm install needed.** Just open `index.html` (or serve the folder) and it works.
 
@@ -60,3 +63,4 @@ cosmos-3d/
 - A mini "warp speed" star-streak transition between each chapter
 - More camera keyframes for a longer, more detailed journey
 - A lightweight loading progress bar tied to actual asset loading rather than a fixed timeout
+- More clickable "explorable" objects (comets, nebula clusters) with their own facts
